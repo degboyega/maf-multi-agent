@@ -147,6 +147,7 @@ class RunRequest(BaseModel):
     reasoning_effort: str | None = "low"  # "high", "medium", "low", or "none"
     user_token: str | None = None  # Fabric user token (Easy Auth header or body)
     user_email: str | None = None  # Local-dev identity fallback only; gated by config
+    conversation_run_id: str | None = None  # Previous run_id to continue a conversation
 
 
 class RunResponse(BaseModel):
@@ -346,6 +347,29 @@ async def start_run(req: RunRequest, request: Request):
         user_email = None
 
     logger.info("🚀 RUN %s | user_token=%s | user_email=%s", run_id, token_source, user_email or "absent")
+
+    # Build conversation history from previous run if continuing a session
+    conversation_history: str | None = None
+    if req.conversation_run_id:
+        history = get_history_store()
+        user_dir_for_lookup = _safe_user_dir(user_email) if user_email else ""
+        prev_session = await history.get_session(user_dir_for_lookup, req.conversation_run_id)
+        if not prev_session and user_email:
+            result_tuple = await history.find_session_any_user(req.conversation_run_id)
+            prev_session = result_tuple[1] if result_tuple else None
+        if prev_session:
+            prev_query = prev_session.get("query", "")
+            prev_result = prev_session.get("result", "")
+            if prev_query and prev_result:
+                conversation_history = (
+                    f"Previous conversation turn:\n"
+                    f"User asked: {prev_query}\n"
+                    f"Result was: {prev_result}\n"
+                )
+                logger.info("💬 Conversation continued from run %s", req.conversation_run_id)
+        else:
+            logger.warning("💬 conversation_run_id %s not found — starting fresh", req.conversation_run_id)
+
     store = _store()
     user_dir = _safe_user_dir(user_email) if user_email else ""
     run_state = store.create(run_id, user_dir=user_dir)
@@ -388,6 +412,7 @@ async def start_run(req: RunRequest, request: Request):
             reasoning_effort=req.reasoning_effort,
             user_token=user_token,
             user_email=user_email,
+            conversation_history=conversation_history,
         )
     )
 
@@ -403,6 +428,7 @@ async def _run_workflow(
     reasoning_effort: str | None = "low",
     user_token: str | None = None,
     user_email: str | None = None,
+    conversation_history: str | None = None,
 ):
     """Execute the scratchpad workflow and push events to the queue."""
     store = _store()
@@ -428,6 +454,7 @@ async def _run_workflow(
             reasoning_effort=reasoning_effort,
             user_token=user_token,
             user_email=user_email,
+            conversation_history=conversation_history,
         )
 
         # Copy sandbox files into local run folder (for disk-based markdown)

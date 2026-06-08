@@ -183,6 +183,8 @@ export function PlannerShell() {
   const [enabledAgents, setEnabledAgents] = useState<Set<string>>(new Set());
   const [fabricStatus, setFabricStatus] = useState<FabricStatus | null>(null);
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("medium");
+  const [conversationRunId, setConversationRunId] = useState<string | null>(null);
+  const [conversationTurn, setConversationTurn] = useState(0);
   const [versionInfo, setVersionInfo] = useState<{ version: string; git_sha: string; build_date: string } | null>(null);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
@@ -502,7 +504,9 @@ export function PlannerShell() {
     setActiveAgent(null);
     setHighlightedTask(null);
     setActiveTab("activity");
-    setDraftQuery(STARTER_PROMPTS[0]?.query ?? "");
+    setDraftQuery("");
+    setConversationRunId(null);
+    setConversationTurn(0);
     setStreamLabel("Proxy ready. Submit a brief to begin streaming.");
   }, [closeStream]);
 
@@ -545,6 +549,7 @@ export function PlannerShell() {
             query,
             selected_agents: Array.from(enabledAgents).filter((name) => name !== "orchestrator"),
             reasoning_effort: reasoningEffort,
+            conversation_run_id: conversationRunId,
           }),
         });
 
@@ -554,6 +559,8 @@ export function PlannerShell() {
 
         const payload = (await response.json()) as { run_id: string };
         setRunId(payload.run_id);
+        setConversationRunId(payload.run_id);
+        setConversationTurn((t) => t + 1);
 
         connectSSE(payload.run_id);
       } catch (runError) {
@@ -563,31 +570,9 @@ export function PlannerShell() {
         setStreamLabel("The run could not be started. Verify the backend and try again.");
       }
     },
-    [closeStream, connectSSE, enabledAgents, reasoningEffort],
+    [closeStream, connectSSE, enabledAgents, reasoningEffort, conversationRunId],
   );
 
-  const handleLoadMock = useCallback(async () => {
-    closeStream();
-    // Lazy-load the large mock fixture to reduce initial bundle size
-    const { getMaintenanceMockScenario } = await import("@/lib/mock-scenarios");
-    const scenario = getMaintenanceMockScenario();
-
-    setRunSource("mock");
-    setStatus("done");
-    setEvents(scenario.events);
-    setTasks(scenario.tasks);
-    setDocuments(scenario.documents);
-    setResult(scenario.result);
-    setDraftQuery(scenario.query);
-    setError("");
-    setAgents(ensureOrchestratorFirst(scenario.agents));
-    setEnabledAgents(new Set(ensureOrchestratorFirst(scenario.agents).map((a) => a.name)));
-    setActiveAgent(null);
-    setHighlightedTask(null);
-    setActiveTab("activity");
-    setRunId(scenario.runId);
-    setStreamLabel(scenario.streamLabel);
-  }, [closeStream]);
 
   // ── History / Replay ─────────────────────────────────────────
 
@@ -796,17 +781,6 @@ export function PlannerShell() {
         },
   [runSource]);
 
-  const missionBriefCollapseMode: "idle" | "running" | "settled" | "mock" =
-    runSource === "mock" || runSource === "replay" ? "mock" : status === "running" ? "running" : status === "done" ? "settled" : "idle";
-
-  const missionBriefCondensedLabel =
-    missionBriefCollapseMode === "mock"
-      ? runSource === "replay" ? "Replay" : "Mock replay"
-      : missionBriefCollapseMode === "running"
-        ? "Streaming"
-        : missionBriefCollapseMode === "settled"
-          ? "Done"
-          : "Ready";
 
   const missionHeaderPanel = (
     <div className="topbar">
@@ -991,7 +965,7 @@ export function PlannerShell() {
       <main className="planner-main flex min-w-0 flex-1 flex-col">
         {missionHeaderPanel}
 
-        <div className="flex flex-1 flex-col gap-4 px-4 py-4 sm:px-5 sm:py-5 lg:px-6">
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5 lg:px-6">
 
         {error ? (
           <motion.div
@@ -1008,19 +982,6 @@ export function PlannerShell() {
             </div>
           </motion.div>
         ) : null}
-
-        <QueryComposer
-          collapseMode={missionBriefCollapseMode}
-          condensedStateLabel={missionBriefCondensedLabel}
-          disabled={status === "running"}
-          isMockActive={runSource === "mock" || runSource === "replay"}
-          onLoadMock={handleLoadMock}
-          onQueryChange={setDraftQuery}
-          onRun={handleRun}
-          query={draftQuery}
-          reasoningEffort={reasoningEffort}
-          onReasoningEffortChange={setReasoningEffort}
-        />
 
         {status !== "idle" ? (
           <>
@@ -1064,6 +1025,19 @@ export function PlannerShell() {
             </>
           ) : null}
         </footer>
+        </div>
+
+        <div className="chat-input-dock">
+          <QueryComposer
+            disabled={status === "running"}
+            onQueryChange={setDraftQuery}
+            onRun={(q) => { handleRun(q); setDraftQuery(""); }}
+            query={draftQuery}
+            reasoningEffort={reasoningEffort}
+            onReasoningEffortChange={setReasoningEffort}
+            conversationTurn={conversationTurn}
+            onNewConversation={handleNewSession}
+          />
         </div>
       </main>
 

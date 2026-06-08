@@ -43,6 +43,7 @@ async def run_scratchpad_workflow(
     reasoning_effort: Optional[str] = "low",
     user_token: Optional[str] = None,
     user_email: Optional[str] = None,
+    conversation_history: Optional[str] = None,
 ) -> tuple[str, str]:
     """Run the full scratchpad workflow for a user query.
 
@@ -50,13 +51,14 @@ async def run_scratchpad_workflow(
     FacilitatorTools + dispatch tools (+ optional mail tools), and runs the agent.
 
     Args:
-        query: The user's travel planning question.
+        query: The user's question.
         agents_dir: Directory with agent YAML definitions.
         event_callback: Optional callback for real-time event streaming.
         selected_agents: Optional list of agent names to include. If None, all agents are used.
         reasoning_effort: Reasoning effort level: "high", "medium", "low", or "none".
         user_token: Fabric user token from Easy Auth or local dev.
         user_email: Logged-in user's email for email notifications.
+        conversation_history: Prior conversation context to prepend for multi-turn sessions.
 
     Returns a tuple of (facilitator's final response text, shared document markdown).
     """
@@ -151,13 +153,20 @@ async def run_scratchpad_workflow(
         default_options=default_options,
     )
 
+    # Prepend prior conversation turns so the orchestrator has full context
+    if conversation_history:
+        full_query = f"{conversation_history}\nCurrent message: {query}"
+        logger.info("💬 Multi-turn: injecting %d chars of conversation history", len(conversation_history))
+    else:
+        full_query = query
+
     logger.info("━" * 60)
     logger.info("📨 USER QUERY → FACILITATOR")
     logger.info("   Query: %s", query)
     logger.info("━" * 60)
 
     t0 = time.perf_counter()
-    result = await facilitator.run(query)
+    result = await facilitator.run(full_query)
     total_elapsed = time.perf_counter() - t0
 
     # Extract orchestrator token usage from the MAF response
