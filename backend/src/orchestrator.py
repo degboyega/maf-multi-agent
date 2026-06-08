@@ -177,7 +177,7 @@ def create_orchestrator(
         name="travel-orchestrator",
         instructions=instructions,
         tools=tools,
-        default_options={"reasoning": {"effort": "low", "summary": "auto"}},
+        default_options={"reasoning": {"effort": "medium", "summary": "auto"}},
     )
 
 

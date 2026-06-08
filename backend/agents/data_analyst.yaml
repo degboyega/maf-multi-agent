@@ -19,7 +19,7 @@ task_description: >
   questions to answer, metrics to compute, and desired output format.
 
 mcp_url_env: FABRIC_DATA_AGENT_MCP_URL
-mcp_tool_name: fabric-data-agent
+mcp_tool_name: DataAgent_maf_data_agent
 mcp_auth:
   type: default_credential
   scope: https://api.fabric.microsoft.com/.default

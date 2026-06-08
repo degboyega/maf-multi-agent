@@ -22,7 +22,6 @@ interface QueryComposerProps {
 }
 
 const REASONING_OPTIONS: { value: ReasoningEffort; label: string; hint: string }[] = [
-  { value: "none", label: "None", hint: "No extended reasoning" },
   { value: "low", label: "Low", hint: "Fast" },
   { value: "medium", label: "Med", hint: "Balanced" },
   { value: "high", label: "High", hint: "Best quality" },

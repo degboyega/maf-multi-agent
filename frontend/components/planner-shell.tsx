@@ -171,7 +171,7 @@ export function PlannerShell() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [documents, setDocuments] = useState<DocumentVersion[]>([]);
   const [result, setResult] = useState("");
-  const [draftQuery, setDraftQuery] = useState(STARTER_PROMPTS[0]?.query ?? "");
+  const [draftQuery, setDraftQuery] = useState("");
   const [error, setError] = useState("");
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
@@ -182,7 +182,7 @@ export function PlannerShell() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [enabledAgents, setEnabledAgents] = useState<Set<string>>(new Set());
   const [fabricStatus, setFabricStatus] = useState<FabricStatus | null>(null);
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("low");
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("medium");
   const [versionInfo, setVersionInfo] = useState<{ version: string; git_sha: string; build_date: string } | null>(null);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);

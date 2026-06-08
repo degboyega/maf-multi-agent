@@ -155,7 +155,7 @@ resource "azurerm_role_assignment" "acr_pull" {
 resource "azurerm_role_assignment" "ai_developer" {
   count                = var.ai_services_resource_id != "" ? 1 : 0
   scope                = var.ai_services_resource_id
-  role_definition_name = "Azure AI User"
+  role_definition_name = "Foundry User"
   principal_id         = azurerm_user_assigned_identity.main.principal_id
 }
 
