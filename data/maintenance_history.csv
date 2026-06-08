@@ -1,0 +1,6 @@
+work_order_id,asset_id,date,maintenance_type,findings,technician,hours_to_complete,parts_replaced,cost_usd
+WO-2024-0041,COMP-001,2024-02-12,Preventive,Normal wear on suction valves. Replaced valve springs. Checked piston rod runout within spec.,J. Okafor,14,Suction valve springs x8,4200
+WO-2024-0118,COMP-001,2024-08-30,Corrective,High discharge temperature alarm triggered. Found fouled discharge valve seats. Cleaned and lapped. Vibration returned to normal.,M. Adeyemi,22,"Discharge valve seats x4, valve plates x4",9800
+WO-2025-0033,COMP-001,2025-04-10,Preventive,Annual inspection. All parameters within spec. Replaced packing rings. No valve issues noted. Lube oil sample clean.,J. Okafor,18,"Packing rings, lube oil filter",5500
+WO-2024-0055,COMP-002,2024-03-18,Preventive,"Routine 2000-hour service. Replaced lube oil, filters, checked all valve assemblies. No anomalies found.",A. Ibrahim,10,"Lube oil, filters, gaskets",2800
+WO-2024-0199,COMP-002,2024-11-05,Preventive,Annual inspection. Minor scoring on cylinder liner noted. Measured within acceptable tolerance. Flagged for monitoring.,A. Ibrahim,16,"Piston rings, lube oil",4100

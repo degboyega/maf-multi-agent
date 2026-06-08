@@ -1,0 +1,3 @@
+asset_id,asset_type,manufacturer,model,installation_date,location,field,rated_capacity_mmscfd,horsepower,last_inspection_date,next_inspection_due,inspection_interval_months
+COMP-001,Gas Compressor,Emerson,CSER-2000,2019-03-15,"Houston, TX",Eagle Ford Block 7,12.5,2500,2025-04-10,2026-04-10,12
+COMP-002,Gas Compressor,Ariel,JGC/6,2021-07-22,"Midland, TX",Permian Basin Block 3,9.8,1800,2025-11-05,2026-11-05,12
