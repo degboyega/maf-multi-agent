@@ -71,14 +71,16 @@ async def send_mail(
     to: str,
     subject: str,
     body_html: str,
+    cc: list[str] | None = None,
 ) -> str:
     """Send an email via Microsoft Graph API.
 
     Args:
         sender: The mailbox to send from (must be authorized for the MI).
-        to: Recipient email address.
+        to: Primary recipient email address.
         subject: Email subject line.
         body_html: HTML body content.
+        cc: Optional list of CC recipient email addresses.
 
     Returns:
         Success message or error description.
@@ -90,28 +92,26 @@ async def send_mail(
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
-    payload = {
-        "message": {
-            "subject": subject,
-            "body": {
-                "contentType": "HTML",
-                "content": body_html,
-            },
-            "toRecipients": [
-                {"emailAddress": {"address": to}},
-            ],
-        },
-        "saveToSentItems": "true",
+    message: dict = {
+        "subject": subject,
+        "body": {"contentType": "HTML", "content": body_html},
+        "toRecipients": [{"emailAddress": {"address": to}}],
     }
+    if cc:
+        message["ccRecipients"] = [{"emailAddress": {"address": a}} for a in cc]
 
-    logger.info("📧 Sending email: from=%s to=%s subject='%s'", sender, to, subject[:80])
+    payload = {"message": message, "saveToSentItems": "true"}
+
+    cc_str = f", cc={cc}" if cc else ""
+    logger.info("📧 Sending email: from=%s to=%s%s subject='%s'", sender, to, cc_str, subject[:80])
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(url, headers=headers, json=payload)
 
     if resp.status_code == 202:
-        logger.info("✅ Email sent successfully to %s", to)
-        return f"Email sent successfully to {to}"
+        all_recipients = [to] + (cc or [])
+        logger.info("✅ Email sent to %s", ", ".join(all_recipients))
+        return f"Email sent successfully to {', '.join(all_recipients)}"
     else:
         error_text = resp.text[:500]
         logger.error("❌ Graph sendMail failed: %d %s", resp.status_code, error_text)

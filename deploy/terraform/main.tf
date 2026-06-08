@@ -602,6 +602,14 @@ resource "azurerm_container_app" "main" {
         }
       }
 
+      dynamic "env" {
+        for_each = var.mail_team_addresses != "" ? [1] : []
+        content {
+          name  = "MAIL_TEAM_ADDRESSES"
+          value = var.mail_team_addresses
+        }
+      }
+
       # Persistent history storage — only injected when enabled
       dynamic "env" {
         for_each = var.enable_history_storage ? [1] : []

@@ -132,6 +132,12 @@ variable "mail_sender_address" {
   default     = ""
 }
 
+variable "mail_team_addresses" {
+  description = "Comma-separated list of team CC addresses for send_email_to_team. Leave empty to disable the team tool."
+  type        = string
+  default     = ""
+}
+
 # ── Persistent history storage ────────────────────────────────
 
 variable "enable_history_storage" {
