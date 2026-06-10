@@ -1,0 +1,197 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "appUrl": {
+      "defaultValue": "https://maf-multi-agent.yellowcoast-f2115a5b.eastus.azurecontainerapps.io",
+      "type": "String",
+      "metadata": { "description": "Base URL of the MAF Container App" }
+    },
+    "scheduleApiKey": {
+      "defaultValue": "",
+      "type": "SecureString",
+      "metadata": { "description": "Value of SCHEDULE_API_KEY env var set on the Container App" }
+    },
+    "approverEmail": {
+      "defaultValue": "gafamojuro@wragbysolutions.com",
+      "type": "String",
+      "metadata": { "description": "Person who reviews and approves the report before it goes to the team" }
+    },
+    "teamEmails": {
+      "defaultValue": "alawani@wragbysolutions.com;obello@wragbysolutions.com;oohidoa@wragbysolutions.com;soguntoye@wragbysolutions.com;ooyeneyin@wragbysolutions.com",
+      "type": "String",
+      "metadata": { "description": "Semicolon-separated list of team member emails" }
+    }
+  },
+  "triggers": {
+    "Recurrence": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Week",
+        "interval": 1,
+        "schedule": {
+          "weekDays": ["Monday"],
+          "hours": ["8"],
+          "minutes": ["0"]
+        },
+        "timeZone": "W. Central Africa Standard Time"
+      }
+    }
+  },
+  "actions": {
+    "Start_Agent_Run": {
+      "type": "Http",
+      "runAfter": {},
+      "inputs": {
+        "method": "POST",
+        "uri": "@{concat(parameters('appUrl'), '/api/schedule/run')}",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Schedule-Key": "@parameters('scheduleApiKey')"
+        },
+        "body": {
+          "query": "Carry out a full health analysis on both COMP-001 (Houston, TX) and COMP-002 (Midland, TX). For each asset: retrieve the last 7 days of sensor readings, identify any parameters that breach or approach the advisory thresholds defined in the Emerson CSER2000 maintenance manual and the Iqbal guidelines, cross-reference against the maintenance history to identify recurring issues, and assess overall risk. Summarise your findings in a structured report with a status for each asset (Normal / Advisory / Critical), specific readings that triggered concern, root cause hypothesis, and recommended action with urgency rating.",
+          "reasoning_effort": "medium"
+        }
+      }
+    },
+    "Wait_For_Run_To_Complete": {
+      "type": "Until",
+      "runAfter": {
+        "Start_Agent_Run": ["Succeeded"]
+      },
+      "expression": "@equals(body('Poll_Run_Status')['status'], 'done')",
+      "limit": {
+        "count": 40,
+        "timeout": "PT40M"
+      },
+      "actions": {
+        "Delay_30_Seconds": {
+          "type": "Wait",
+          "runAfter": {},
+          "inputs": {
+            "interval": {
+              "count": 30,
+              "unit": "Second"
+            }
+          }
+        },
+        "Poll_Run_Status": {
+          "type": "Http",
+          "runAfter": {
+            "Delay_30_Seconds": ["Succeeded"]
+          },
+          "inputs": {
+            "method": "GET",
+            "uri": "@{concat(parameters('appUrl'), '/api/schedule/result/', body('Start_Agent_Run')['run_id'])}",
+            "headers": {
+              "X-Schedule-Key": "@parameters('scheduleApiKey')"
+            }
+          }
+        }
+      }
+    },
+    "Check_Run_Succeeded": {
+      "type": "If",
+      "runAfter": {
+        "Wait_For_Run_To_Complete": ["Succeeded"]
+      },
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@body('Poll_Run_Status')['status']",
+              "done"
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Send_Approval_Email": {
+          "type": "ApiConnection",
+          "runAfter": {},
+          "inputs": {
+            "host": {
+              "connection": {
+                "name": "@parameters('$connections')['office365']['connectionId']"
+              }
+            },
+            "method": "post",
+            "path": "/approvalmail/$subscriptions",
+            "body": {
+              "NotificationUrl": "@{listCallbackUrl()}",
+              "Message": {
+                "To": "@parameters('approverEmail')",
+                "Subject": "@{concat('Asset Health Report — ', formatDateTime(utcNow(), 'dd MMM yyyy'), ' — Approval Required')}",
+                "Body": "@{concat('<p>The scheduled asset health analysis has completed. Please review the report below and approve sending it to the team.</p><hr/>', body('Poll_Run_Status')['result'], '<hr/><p><em>Generated automatically by MAF Multi-Agent on ', formatDateTime(utcNow(), 'dd MMM yyyy HH:mm'), ' UTC</em></p>')}",
+                "Importance": "Normal",
+                "Options": "Approve, Reject"
+              }
+            }
+          }
+        },
+        "Route_On_Decision": {
+          "type": "Switch",
+          "runAfter": {
+            "Send_Approval_Email": ["Succeeded"]
+          },
+          "expression": "@body('Send_Approval_Email')['SelectedOption']",
+          "cases": {
+            "Approved": {
+              "case": "Approve",
+              "actions": {
+                "Send_Report_To_Team": {
+                  "type": "ApiConnection",
+                  "runAfter": {},
+                  "inputs": {
+                    "host": {
+                      "connection": {
+                        "name": "@parameters('$connections')['office365']['connectionId']"
+                      }
+                    },
+                    "method": "post",
+                    "path": "/Mail",
+                    "body": {
+                      "To": "@parameters('teamEmails')",
+                      "Subject": "@{concat('Asset Health Report — ', formatDateTime(utcNow(), 'dd MMM yyyy'))}",
+                      "Body": "@{concat(body('Poll_Run_Status')['result'], '<br/><br/><em>Approved and sent by ', parameters('approverEmail'), ' on ', formatDateTime(utcNow(), 'dd MMM yyyy HH:mm'), ' UTC</em>')}",
+                      "Importance": "Normal",
+                      "IsHtml": true
+                    }
+                  }
+                }
+              }
+            },
+            "Rejected": {
+              "case": "Reject",
+              "actions": {
+                "Log_Rejection": {
+                  "type": "Compose",
+                  "runAfter": {},
+                  "inputs": "Report rejected by approver on @{formatDateTime(utcNow(), 'dd MMM yyyy HH:mm')}. No email sent to team."
+                }
+              }
+            }
+          },
+          "default": {
+            "actions": {}
+          }
+        }
+      },
+      "else": {
+        "actions": {
+          "Log_Run_Failed": {
+            "type": "Compose",
+            "runAfter": {},
+            "inputs": "Scheduled agent run did not complete successfully. Status: @{body('Poll_Run_Status')['status']}. Error: @{body('Poll_Run_Status')['error']}"
+          }
+        }
+      }
+    }
+  },
+  "outputs": {}
+}

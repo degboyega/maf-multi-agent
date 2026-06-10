@@ -23,6 +23,8 @@ class Config(BaseSettings):
     history_storage_account_url: str = ""  # Blob Storage URL for persistent history (empty = local filesystem)
     allow_anonymous_local_dev: bool = False  # Allow unauthenticated local history access (dev only)
     enable_instrumentation: bool = False  # Enable Azure Monitor / OpenTelemetry instrumentation
+    schedule_api_key: str = ""  # Secret key Logic Apps sends in X-Schedule-Key header
+    schedule_recipient_email: str = ""  # Email that receives the approval request for scheduled runs
 
     model_config = {"env_file": ".env", "case_sensitive": False}
 

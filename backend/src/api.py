@@ -657,6 +657,136 @@ async def mail_cancel(token: str):
     return {"status": "cancelled"}
 
 
+# ── Scheduled / Logic Apps endpoints ─────────────────────────
+
+
+class ScheduleRunRequest(BaseModel):
+    query: str
+    selected_agents: list[str] | None = None
+    reasoning_effort: str = "medium"
+
+
+def _validate_schedule_key(request: Request) -> None:
+    """Reject requests that don't carry the correct X-Schedule-Key header."""
+    expected = get_config().schedule_api_key
+    if not expected:
+        raise HTTPException(status_code=503, detail="Scheduled runs are not enabled (SCHEDULE_API_KEY not set).")
+    provided = request.headers.get("X-Schedule-Key", "")
+    if provided != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-Schedule-Key header.")
+
+
+@app.post("/api/schedule/run")
+async def schedule_run(req: ScheduleRunRequest, request: Request):
+    """Start a workflow run from a scheduled trigger (e.g. Logic Apps).
+
+    Authentication: X-Schedule-Key header must match SCHEDULE_API_KEY env var.
+    The run is attributed to SCHEDULE_RECIPIENT_EMAIL so results can be retrieved.
+    Returns run_id immediately; poll /api/schedule/result/{run_id} until done.
+    """
+    _validate_schedule_key(request)
+
+    config = get_config()
+    user_email = config.schedule_recipient_email or None
+    if not user_email:
+        raise HTTPException(status_code=503, detail="SCHEDULE_RECIPIENT_EMAIL is not configured.")
+
+    created_at = datetime.now().isoformat()
+    run_id = datetime.now().strftime("%Y%m%d-%H%M%S") + "-sched-" + uuid.uuid4().hex[:6]
+    user_dir = _safe_user_dir(user_email)
+
+    store = _store()
+    run_state = store.create(run_id, user_dir=user_dir)
+    snapshot_writer = _RunSnapshotWriter(
+        run_id=run_id,
+        user_dir=user_dir,
+        query=req.query,
+        created_at=created_at,
+        user_email=user_email,
+    )
+    await snapshot_writer.flush_now()
+
+    loop = asyncio.get_running_loop()
+
+    def _handle_event(event: AgentEvent):
+        if event.event_type != EventType.AGENT_STREAMING:
+            serialized = _serialize_event(event)
+            snapshot_writer.record_event(serialized)
+        run_state.queue.put_nowait(event)
+
+    def event_callback(event: AgentEvent):
+        loop.call_soon_threadsafe(_handle_event, event)
+
+    asyncio.create_task(
+        _run_workflow(
+            run_id,
+            req.query,
+            event_callback,
+            snapshot_writer=snapshot_writer,
+            selected_agents=req.selected_agents,
+            reasoning_effort=req.reasoning_effort,
+            user_token=None,
+            user_email=user_email,
+            conversation_history=None,
+        )
+    )
+
+    logger.info("📅 SCHEDULE RUN %s started | email=%s | query=%.80s", run_id, user_email, req.query)
+    return {"run_id": run_id}
+
+
+@app.get("/api/schedule/result/{run_id}")
+async def schedule_result(run_id: str, request: Request):
+    """Poll for the result of a scheduled run.
+
+    Returns {"status": "running"} while in progress, or
+    {"status": "done", "result": "...", "document": "..."} when complete.
+    Authentication: X-Schedule-Key header required.
+    """
+    _validate_schedule_key(request)
+    _validate_run_id(run_id)
+
+    store = _store()
+    run_state = store.get(run_id)
+
+    if run_state:
+        if run_state.result is not None:
+            return {
+                "status": "done",
+                "result": run_state.result.get("result", ""),
+                "document": run_state.result.get("document", ""),
+            }
+        return {"status": "running"}
+
+    # Run evicted from memory — check persistent history
+    history = get_history_store()
+    result_tuple = await history.find_session_any_user(run_id)
+    snapshot = result_tuple[1] if result_tuple else None
+
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Run not found.")
+
+    snap_status = snapshot.get("status", "running")
+    if snap_status == "done":
+        result_text = snapshot.get("result", "")
+        final_doc = ""
+        for doc in reversed(snapshot.get("documents", [])):
+            if isinstance(doc, dict) and isinstance(doc.get("content"), str):
+                final_doc = doc["content"]
+                break
+        return {"status": "done", "result": result_text, "document": final_doc}
+
+    if snap_status == "error":
+        error_msg = next(
+            (ev.get("data", {}).get("error", "") for ev in reversed(snapshot.get("events", []))
+             if ev.get("event_type") == "agent_error"),
+            "Unknown error",
+        )
+        return {"status": "error", "error": error_msg}
+
+    return {"status": "running"}
+
+
 # ── Fabric Capacity Status ────────────────────────────────────
 
 @app.get("/api/fabric/status")
