@@ -640,6 +640,11 @@ async def mail_confirm(token: str):
         body_html=pending.body,
         cc=cc,
     )
+
+    if not result.startswith("Email sent"):
+        logger.error("❌ Mail send failed: token=%s result=%s", token, result)
+        raise HTTPException(status_code=502, detail=result)
+
     logger.info("✅ Mail confirmed and sent: token=%s to=%s", token, pending.user_email)
     return {"status": "sent", "result": result}
 
