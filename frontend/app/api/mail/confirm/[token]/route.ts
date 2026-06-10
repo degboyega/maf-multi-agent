@@ -12,9 +12,9 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { token: string } },
+  { params }: { params: Promise<{ token: string }> },
 ) {
-  const { token } = params;
+  const { token } = await params;
 
   if (!TOKEN_PATTERN.test(token)) {
     return NextResponse.json({ detail: "Invalid token format" }, { status: 400 });
