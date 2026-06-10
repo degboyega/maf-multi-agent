@@ -1032,16 +1032,13 @@ export function PlannerShell() {
           {streamLabel}
         </p>
 
-        <footer className="version-footer">
-          Created by Michal Marusan and Jakub Kudela
-          {versionInfo ? (
-            <>
-              {" · "}v{versionInfo.version}
-              {versionInfo.git_sha !== "unknown" ? ` (${versionInfo.git_sha})` : ""}
-              {versionInfo.build_date !== "unknown" ? ` · ${versionInfo.build_date.split("T")[0]}` : ""}
-            </>
-          ) : null}
-        </footer>
+        {versionInfo ? (
+          <footer className="version-footer">
+            v{versionInfo.version}
+            {versionInfo.git_sha !== "unknown" ? ` (${versionInfo.git_sha})` : ""}
+            {versionInfo.build_date !== "unknown" ? ` · ${versionInfo.build_date.split("T")[0]}` : ""}
+          </footer>
+        ) : null}
         </div>
 
         {pendingEmail && (

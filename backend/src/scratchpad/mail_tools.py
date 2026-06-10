@@ -1,6 +1,7 @@
 """MailTools — facilitator tool for previewing email before user confirms sending."""
 
 import logging
+import re
 import secrets
 import time
 from dataclasses import dataclass, field
@@ -92,7 +93,7 @@ class MailTools:
         PENDING_MAIL_STORE[token] = pending
 
         cc = self._team_addresses if recipient_type == "team" else []
-        body_preview = body[:300].replace("<", "&lt;").replace(">", "&gt;")
+        body_preview = re.sub(r"<[^>]+>", "", body)[:300].strip()
 
         logger.info(
             "📧 MailTools.preview: token=%s to=%s cc=%s subject='%s'",
