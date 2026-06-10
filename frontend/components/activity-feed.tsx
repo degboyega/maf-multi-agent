@@ -15,6 +15,7 @@ import {
   Flag,
   List,
   ListTodo,
+  Mail,
   Play,
   Sparkles,
   SquareCheckBig,
@@ -49,6 +50,7 @@ const EVENT_LABELS: Record<string, string> = {
   agent_error: "Agent error",
   document_updated: "Document updated",
   output: "Final output",
+  email_pending_confirmation: "Email ready to send",
 };
 
 const EVENT_ICONS: Record<string, LucideIcon> = {
@@ -63,6 +65,7 @@ const EVENT_ICONS: Record<string, LucideIcon> = {
   agent_error: AlertTriangle,
   document_updated: FileText,
   output: Sparkles,
+  email_pending_confirmation: Mail,
 };
 
 const NOISE_EVENT_TYPES = new Set(["agent_started", "task_completed"]);

@@ -13,6 +13,7 @@ import { WorkspacePanels } from "@/components/workspace-panels";
 import { ToastContainer, useToast } from "@/components/toast";
 import { WhatsNewModal } from "@/components/whats-new-modal";
 import { UsageDashboard } from "@/components/usage-dashboard";
+import { EmailConfirmCard } from "@/components/email-confirm-card";
 import { getAgentIdentity } from "@/lib/agent-metadata";
 import { STARTER_PROMPTS } from "@/lib/starter-prompts";
 import {
@@ -188,6 +189,9 @@ export function PlannerShell() {
   const [versionInfo, setVersionInfo] = useState<{ version: string; git_sha: string; build_date: string } | null>(null);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [dashboardOpen, setDashboardOpen] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState<{
+    token: string; subject: string; to: string; cc: string[]; bodyPreview: string;
+  } | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -415,6 +419,19 @@ export function PlannerShell() {
         setDocuments((previous) => appendDocument(previous, { version: "final", content: nextDocument, action: "final" }));
       }
       setActiveTab("result");
+    }
+
+    if (event.event_type === "email_pending_confirmation") {
+      const d = event.data;
+      if (typeof d.mail_token === "string") {
+        setPendingEmail({
+          token: d.mail_token,
+          subject: typeof d.mail_subject === "string" ? d.mail_subject : "(no subject)",
+          to: typeof d.mail_to === "string" ? d.mail_to : "",
+          cc: Array.isArray(d.mail_cc) ? (d.mail_cc as string[]) : [],
+          bodyPreview: typeof d.mail_body_preview === "string" ? d.mail_body_preview : "",
+        });
+      }
     }
 
     if (event.event_type === "workflow_completed") {
@@ -1026,6 +1043,19 @@ export function PlannerShell() {
           ) : null}
         </footer>
         </div>
+
+        {pendingEmail && (
+          <div className="email-confirm-dock">
+            <EmailConfirmCard
+              token={pendingEmail.token}
+              subject={pendingEmail.subject}
+              to={pendingEmail.to}
+              cc={pendingEmail.cc}
+              bodyPreview={pendingEmail.bodyPreview}
+              onDismiss={() => setPendingEmail(null)}
+            />
+          </div>
+        )}
 
         <div className="chat-input-dock">
           <QueryComposer

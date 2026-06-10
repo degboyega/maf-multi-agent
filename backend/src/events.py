@@ -34,6 +34,9 @@ class EventType(str, Enum):
     # Document updates
     DOCUMENT_UPDATED = "document_updated"
 
+    # Email confirmation gate
+    EMAIL_PENDING_CONFIRMATION = "email_pending_confirmation"
+
 
 @dataclass
 class AgentEvent:

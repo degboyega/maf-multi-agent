@@ -104,7 +104,7 @@ async def run_scratchpad_workflow(
     # Add mail tools if configured (MAIL_SENDER_ADDRESS set + user email available)
     has_mail_tools = False
     if config.mail_enabled and user_email:
-        mail_tools = MailTools(user_email=user_email, config=config)
+        mail_tools = MailTools(user_email=user_email, config=config, event_callback=event_callback)
         all_tools = all_tools + mail_tools.get_tools()
         has_mail_tools = True
         logger.info("📧 Mail tools enabled: sender=%s, recipient=%s", config.mail_sender_address, user_email)

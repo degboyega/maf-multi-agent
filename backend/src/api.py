@@ -32,6 +32,8 @@ from pydantic import BaseModel
 from src.config import get_config
 from src.events import AgentEvent, EventType
 from src.agent_loader import list_agent_definitions
+from src.graph_mail_client import send_mail
+from src.scratchpad.mail_tools import PENDING_MAIL_STORE
 from src.fabric_capacity import get_fabric_capacity_status, resume_fabric_capacity
 from src.file_store import (
     copy_run_files,
@@ -617,6 +619,37 @@ async def serve_file(file_key: str):
             "Content-Disposition": f"inline",
         },
     )
+
+
+# ── Mail confirm / cancel ─────────────────────────────────────
+
+@app.post("/api/mail/confirm/{token}")
+async def mail_confirm(token: str):
+    """Confirm and send a staged email. Called by the UI confirmation card."""
+    pending = PENDING_MAIL_STORE.pop(token, None)
+    if not pending:
+        raise HTTPException(status_code=404, detail="Confirmation token not found or already used.")
+    if pending.is_expired():
+        raise HTTPException(status_code=410, detail="Confirmation token has expired. Please ask the agent to preview the email again.")
+
+    cc = pending.team_addresses if pending.team_addresses else None
+    result = await send_mail(
+        sender=pending.sender,
+        to=pending.user_email,
+        subject=pending.subject,
+        body_html=pending.body,
+        cc=cc,
+    )
+    logger.info("✅ Mail confirmed and sent: token=%s to=%s", token, pending.user_email)
+    return {"status": "sent", "result": result}
+
+
+@app.post("/api/mail/cancel/{token}")
+async def mail_cancel(token: str):
+    """Discard a staged email without sending."""
+    PENDING_MAIL_STORE.pop(token, None)
+    logger.info("🚫 Mail cancelled: token=%s", token)
+    return {"status": "cancelled"}
 
 
 # ── Fabric Capacity Status ────────────────────────────────────

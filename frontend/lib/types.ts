@@ -16,12 +16,14 @@ export type EventType =
   | "agent_completed"
   | "agent_error"
   | "output"
-  | "workflow_completed";
+  | "workflow_completed"
+  | "email_pending_confirmation";
 
 const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set<EventType>([
   "workflow_started", "reasoning", "tool_decision", "tasks_created",
   "task_completed", "document_updated", "agent_started", "agent_streaming",
   "agent_completed", "agent_error", "output", "workflow_completed",
+  "email_pending_confirmation",
 ]);
 
 export function isKnownEventType(type: string): type is EventType {
@@ -114,6 +116,13 @@ export interface EventData {
 
   // misc
   length?: number;
+
+  // email_pending_confirmation
+  mail_token?: string;
+  mail_subject?: string;
+  mail_to?: string;
+  mail_cc?: string[];
+  mail_body_preview?: string;
 
   // forward-compat fallback
   [key: string]: unknown;

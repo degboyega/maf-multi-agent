@@ -1,34 +1,62 @@
-"""MailTools — facilitator tools for sending email to the user and/or team."""
+"""MailTools — facilitator tool for previewing email before user confirms sending."""
 
 import logging
+import secrets
+import time
+from dataclasses import dataclass, field
+from typing import Optional
 
 from agent_framework import FunctionTool
 from pydantic import BaseModel, Field
 
 from src.config import Config
-from src.graph_mail_client import send_mail
+from src.events import AgentEvent, EventCallback, EventType
 
 logger = logging.getLogger(__name__)
 
+TOKEN_TTL_SECONDS = 300  # tokens expire after 5 minutes
 
-class SendEmailInput(BaseModel):
-    subject: str = Field(description="Email subject line — short summary of the request/response.")
-    body: str = Field(description="Email body in HTML format with the full final response content.")
+
+@dataclass
+class PendingMail:
+    token: str
+    subject: str
+    body: str
+    recipient_type: str  # "me" | "team"
+    sender: str
+    user_email: str
+    team_addresses: list[str] = field(default_factory=list)
+    created_at: float = field(default_factory=time.time)
+
+    def is_expired(self) -> bool:
+        return time.time() - self.created_at > TOKEN_TTL_SECONDS
+
+
+# Module-level store — imported by api.py for the confirm/cancel endpoints
+PENDING_MAIL_STORE: dict[str, PendingMail] = {}
+
+
+class PreviewEmailInput(BaseModel):
+    subject: str = Field(description="Email subject line — short summary of the content.")
+    body: str = Field(description="Full email body in HTML format.")
+    recipient_type: str = Field(
+        description=(
+            "Who to send to. Use 'me' to send only to the logged-in user, "
+            "or 'team' to send to the user and CC the full team."
+        )
+    )
 
 
 class MailTools:
-    """Facilitator tools for sending email via Microsoft Graph.
+    """Facilitator tool for email previewing.
 
-    Sends from the configured sender mailbox (MAIL_SENDER_ADDRESS) using
-    Managed Identity with Mail.Send permission.
-
-    Two tools are exposed:
-    - send_email_to_me: sends only to the logged-in user
-    - send_email_to_team: sends to the logged-in user and CCs the full team
-      (configured via MAIL_TEAM_ADDRESSES, comma-separated)
+    Replaces the old send_email_to_me / send_email_to_team tools with a single
+    preview_email tool. The agent calls preview_email to stage the email and
+    emit an email_pending_confirmation SSE event. Actual sending only happens
+    when the user clicks Send in the UI, which calls POST /api/mail/confirm/{token}.
     """
 
-    def __init__(self, user_email: str, config: Config):
+    def __init__(self, user_email: str, config: Config, event_callback: EventCallback = None):
         self._user_email = user_email
         self._sender = config.mail_sender_address
         self._team_addresses = [
@@ -36,70 +64,78 @@ class MailTools:
             for a in config.mail_team_addresses.split(",")
             if a.strip()
         ]
+        self._event_callback = event_callback
 
-    async def _send_email_to_user(self, subject: str, body: str) -> str:
-        """Send an email to the logged-in user only."""
+    async def _preview_email(self, subject: str, body: str, recipient_type: str) -> str:
         if not self._user_email:
-            return "Error: no user email available — cannot send email."
+            return "Error: no user email available — cannot preview email."
         if not self._sender:
-            return "Error: MAIL_SENDER_ADDRESS not configured — cannot send email."
+            return "Error: MAIL_SENDER_ADDRESS not configured — cannot preview email."
 
-        logger.info("📧 MailTools.send_to_me: to=%s subject='%s'", self._user_email, subject[:80])
-        return await send_mail(
-            sender=self._sender,
-            to=self._user_email,
+        recipient_type = recipient_type.strip().lower()
+        if recipient_type not in ("me", "team"):
+            recipient_type = "me"
+
+        if recipient_type == "team" and not self._team_addresses:
+            return "Error: MAIL_TEAM_ADDRESSES not configured — cannot send to team."
+
+        token = secrets.token_urlsafe(16)
+        pending = PendingMail(
+            token=token,
             subject=subject,
-            body_html=body,
+            body=body,
+            recipient_type=recipient_type,
+            sender=self._sender,
+            user_email=self._user_email,
+            team_addresses=self._team_addresses if recipient_type == "team" else [],
         )
+        PENDING_MAIL_STORE[token] = pending
 
-    async def _send_email_to_team(self, subject: str, body: str) -> str:
-        """Send an email to the logged-in user and CC the full team."""
-        if not self._user_email:
-            return "Error: no user email available — cannot send email."
-        if not self._sender:
-            return "Error: MAIL_SENDER_ADDRESS not configured — cannot send email."
-        if not self._team_addresses:
-            return "Error: MAIL_TEAM_ADDRESSES not configured — cannot CC the team."
+        cc = self._team_addresses if recipient_type == "team" else []
+        body_preview = body[:300].replace("<", "&lt;").replace(">", "&gt;")
 
         logger.info(
-            "📧 MailTools.send_to_team: to=%s cc=%s subject='%s'",
-            self._user_email, self._team_addresses, subject[:80],
+            "📧 MailTools.preview: token=%s to=%s cc=%s subject='%s'",
+            token, self._user_email, cc, subject[:80],
         )
-        return await send_mail(
-            sender=self._sender,
-            to=self._user_email,
-            subject=subject,
-            body_html=body,
-            cc=self._team_addresses,
+
+        if self._event_callback:
+            self._event_callback(AgentEvent(
+                event_type=EventType.EMAIL_PENDING_CONFIRMATION,
+                source="orchestrator",
+                data={
+                    "mail_token": token,
+                    "mail_subject": subject,
+                    "mail_to": self._user_email,
+                    "mail_cc": cc,
+                    "mail_body_preview": body_preview,
+                },
+            ))
+
+        cc_desc = f" and CC {len(cc)} team members" if cc else ""
+        return (
+            f"Email preview ready. Subject: '{subject}'. "
+            f"Will send to {self._user_email}{cc_desc}. "
+            f"Waiting for user confirmation in the interface — do not call preview_email again."
         )
 
     def get_tools(self) -> list[FunctionTool]:
-        """Return mail FunctionTool objects for the facilitator."""
-        tools = [
+        team_note = (
+            f" Use recipient_type='team' to also CC {', '.join(self._team_addresses)}."
+            if self._team_addresses
+            else ""
+        )
+        return [
             FunctionTool(
-                name="send_email_to_me",
+                name="preview_email",
                 description=(
-                    f"Send an email with the final response to just the logged-in user "
-                    f"({self._user_email}). Use when the user says 'email me' or 'send it to me'."
+                    f"Stage an email for the user to review before it is sent. "
+                    f"The user ({self._user_email}) will see a confirmation card and must click Send. "
+                    f"Use recipient_type='me' to send only to the logged-in user."
+                    f"{team_note}"
+                    f" Always call this tool instead of sending directly."
                 ),
-                func=self._send_email_to_user,
-                input_model=SendEmailInput,
-            ),
-        ]
-
-        if self._team_addresses:
-            team_list = ", ".join(self._team_addresses)
-            tools.append(
-                FunctionTool(
-                    name="send_email_to_team",
-                    description=(
-                        f"Send an email to the logged-in user ({self._user_email}) "
-                        f"and CC the full team ({team_list}). "
-                        f"Use when the user says 'email the team', 'CC everyone', or names team members."
-                    ),
-                    func=self._send_email_to_team,
-                    input_model=SendEmailInput,
-                )
+                func=self._preview_email,
+                input_model=PreviewEmailInput,
             )
-
-        return tools
+        ]
