@@ -19,7 +19,7 @@ FROM mcr.microsoft.com/mirror/docker/library/node:20-bookworm-slim@sha256:9e7012
 
 WORKDIR /app
 COPY frontend ./frontend
-RUN cd frontend && npm ci
+RUN cd frontend && npm install --prefer-offline
 
 ENV BACKEND_API_URL=http://127.0.0.1:8000
 RUN cd frontend && npm run build
