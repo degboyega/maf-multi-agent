@@ -24,11 +24,11 @@ const themeBootstrap = `
     if (savedTheme === 'night' || savedTheme === 'daybreak') {
       theme = savedTheme;
     } else {
-      theme = 'night';
+      theme = 'daybreak';
     }
     document.documentElement.setAttribute('data-theme', theme);
   } catch (error) {
-    document.documentElement.setAttribute('data-theme', 'night');
+    document.documentElement.setAttribute('data-theme', 'daybreak');
   }
 `;
 
@@ -39,8 +39,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Agentic Orchestra",
-  description: "Multi-agent orchestration workspace.",
+  title: "MAF — Multi-Agentic AI Framework",
+  description: "Autonomous compressor intelligence for Oil & Gas operations.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

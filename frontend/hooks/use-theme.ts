@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ThemeMode } from "@/lib/types";
 
 const THEME_STORAGE_KEY = "maf-theme";
-const DEFAULT_THEME: ThemeMode = "night";
+const DEFAULT_THEME: ThemeMode = "daybreak";
 
 function isThemeMode(value: string | null): value is ThemeMode {
   return value === "daybreak" || value === "night";

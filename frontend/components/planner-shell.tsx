@@ -219,7 +219,7 @@ export function PlannerShell() {
   }, []);
 
   // History / replay state
-  const [sidebarView, setSidebarView] = useState<"agents" | "history">("agents");
+  const [sidebarView, setSidebarView] = useState<"agents" | "history">("history");
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -802,8 +802,8 @@ export function PlannerShell() {
   const missionHeaderPanel = (
     <div className="topbar">
       <div className="topbar-inner">
-        <Image src="/logo.svg" alt="Agentic Orchestra" width={22} height={22} className="shrink-0" />
-        <span className="topbar-brand">Agentic Orchestra</span>
+        <Image src="/logo.svg" alt="MAF" width={22} height={22} className="shrink-0" />
+        <span className="topbar-brand">MAF</span>
 
         <div className="topbar-sep" aria-hidden />
 
@@ -996,6 +996,40 @@ export function PlannerShell() {
                 <p className="text-sm font-semibold text-[var(--text-primary)]">Backend or streaming issue</p>
                 <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">{error}</p>
               </div>
+            </div>
+          </motion.div>
+        ) : null}
+
+        {status === "idle" && conversationTurn === 0 ? (
+          <motion.div
+            className="chat-home-state"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+          >
+            <div className="chat-home-greeting">
+              <span className="chat-home-spark">✦</span>
+              <h1 className="chat-home-title">
+                {(() => {
+                  const h = new Date().getHours();
+                  const g = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+                  const name = easyAuthUser?.name?.split(" ")[0] ?? null;
+                  return name ? `${g}, ${name}` : g;
+                })()}
+              </h1>
+              <p className="chat-home-sub">What would you like to analyse today?</p>
+            </div>
+            <div className="chat-home-pills">
+              {STARTER_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt.pill}
+                  type="button"
+                  className="chat-home-pill"
+                  onClick={() => setDraftQuery(prompt.query)}
+                >
+                  {prompt.pill}
+                </button>
+              ))}
             </div>
           </motion.div>
         ) : null}
