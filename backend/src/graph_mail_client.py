@@ -1,16 +1,19 @@
-"""Microsoft Graph mail client — sends email via Graph API using Managed Identity.
+"""Mail client — sends via SMTP (username/password) or Microsoft Graph (managed identity).
 
-Uses DefaultAzureCredential (MI in ACA, Azure CLI locally) with the
-Mail.Send application permission to send email from an admin mailbox.
-No user token is needed — this is purely app-level auth.
+Priority:
+  1. SMTP  — when MAIL_SENDER_PASSWORD is set (no admin permission grant needed)
+  2. Graph — when only managed identity / DefaultAzureCredential is available
 """
 
 import asyncio
 import logging
 import os
+import smtplib
 import threading
 import time
 from dataclasses import dataclass
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Optional
 
 import httpx
@@ -20,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 GRAPH_SCOPE = "https://graph.microsoft.com/.default"
 GRAPH_SEND_MAIL_URL = "https://graph.microsoft.com/v1.0/users/{sender}/sendMail"
+SMTP_HOST = "smtp.office365.com"
+SMTP_PORT = 587
 TOKEN_REFRESH_BUFFER_SECONDS = 300
 
 
@@ -35,7 +40,6 @@ _credential: Optional[DefaultAzureCredential] = None
 
 
 def _get_graph_token() -> str:
-    """Acquire a Microsoft Graph token via DefaultAzureCredential. Thread-safe."""
     global _credential
     cache_key = f"graph:{GRAPH_SCOPE}"
     with _token_lock:
@@ -66,6 +70,30 @@ def _get_graph_token() -> str:
         return token_response.token
 
 
+def _smtp_send(
+    sender: str,
+    password: str,
+    to: str,
+    subject: str,
+    body_html: str,
+    cc: list[str] | None,
+) -> None:
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = to
+    if cc:
+        msg["Cc"] = ", ".join(cc)
+    msg.attach(MIMEText(body_html, "html"))
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.ehlo()
+        server.starttls()
+        server.login(sender, password)
+        recipients = [to] + (cc or [])
+        server.sendmail(sender, recipients, msg.as_string())
+
+
 async def send_mail(
     sender: str,
     to: str,
@@ -73,19 +101,34 @@ async def send_mail(
     body_html: str,
     cc: list[str] | None = None,
 ) -> str:
-    """Send an email via Microsoft Graph API.
+    all_recipients = [to] + (cc or [])
+    recipients_str = ", ".join(all_recipients)
+    cc_str = f", cc={cc}" if cc else ""
 
-    Args:
-        sender: The mailbox to send from (must be authorized for the MI).
-        to: Primary recipient email address.
-        subject: Email subject line.
-        body_html: HTML body content.
-        cc: Optional list of CC recipient email addresses.
+    password = os.environ.get("MAIL_SENDER_PASSWORD", "")
+    if password:
+        logger.info("📧 Sending email (SMTP): from=%s to=%s%s subject='%s'", sender, to, cc_str, subject[:80])
+        try:
+            await asyncio.to_thread(_smtp_send, sender, password, to, subject, body_html, cc)
+            logger.info("✅ Email sent (SMTP) to %s", recipients_str)
+            return f"Email sent successfully to {recipients_str}"
+        except smtplib.SMTPAuthenticationError:
+            logger.error("❌ SMTP auth failed for %s", sender)
+            return (
+                "Failed to send email: SMTP authentication failed. "
+                "Check MAIL_SENDER_PASSWORD or ask your admin to enable SMTP AUTH for the mailbox."
+            )
+        except Exception as exc:
+            logger.error("❌ SMTP send failed: %s", exc)
+            return f"Failed to send email: {exc}"
 
-    Returns:
-        Success message or error description.
-    """
-    token = await asyncio.to_thread(_get_graph_token)
+    # Fall back to Graph API via managed identity
+    logger.info("📧 Sending email (Graph): from=%s to=%s%s subject='%s'", sender, to, cc_str, subject[:80])
+    try:
+        token = await asyncio.to_thread(_get_graph_token)
+    except Exception as exc:
+        logger.error("❌ Failed to acquire Graph token: %s", exc)
+        return f"Failed to send email: could not acquire Graph token — {exc}"
 
     url = GRAPH_SEND_MAIL_URL.format(sender=sender)
     headers = {
@@ -102,16 +145,12 @@ async def send_mail(
 
     payload = {"message": message, "saveToSentItems": "true"}
 
-    cc_str = f", cc={cc}" if cc else ""
-    logger.info("📧 Sending email: from=%s to=%s%s subject='%s'", sender, to, cc_str, subject[:80])
-
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(url, headers=headers, json=payload)
 
     if resp.status_code == 202:
-        all_recipients = [to] + (cc or [])
-        logger.info("✅ Email sent to %s", ", ".join(all_recipients))
-        return f"Email sent successfully to {', '.join(all_recipients)}"
+        logger.info("✅ Email sent (Graph) to %s", recipients_str)
+        return f"Email sent successfully to {recipients_str}"
     else:
         error_text = resp.text[:500]
         logger.error("❌ Graph sendMail failed: %d %s", resp.status_code, error_text)

@@ -16,7 +16,8 @@ class Config(BaseSettings):
     azure_openai_endpoint: str = ""
     azure_openai_chat_deployment_name: str = "gpt-4o"
     azure_openai_summary_deployment_name: str = "gpt-4.1-nano"
-    mail_sender_address: str = ""  # Admin mailbox for Graph Mail.Send (empty = disabled)
+    mail_sender_address: str = ""  # Mailbox emails are sent FROM (empty = disabled)
+    mail_sender_password: str = ""  # SMTP password — if set, uses SMTP instead of managed identity
     mail_team_addresses: str = ""  # Comma-separated CC list for send_email_to_team (empty = disabled)
     super_user_email: str = ""  # Super-user who can view all users' history (empty = disabled)
     allowed_origins: str = "*"  # Comma-separated CORS origins (default: allow all)
