@@ -46,13 +46,23 @@ After dispatching, call `get_plan_status` to verify all tasks are completed.
 {% if has_mail_tools %}
 
 ### Step 6: NOTIFY (only if requested)
-- **Only** if the user explicitly asks for an email (e.g. "send me an email", "email me the results", "notify me"), use `send_email_to_user`
+- **Only** if the user explicitly asks for an email (e.g. "send me an email", "email me the results", "notify me"), use `preview_email`
 - Do NOT send email unless the user specifically requested it
 - The recipient is: **{{ user_email }}**
 - Subject: a concise summary of the user's original request (e.g. "Analysis: [topic]")
 - Body: the full final answer formatted as HTML. Use <h2>, <p>, <ul>, <table> tags for structure.
   Convert any markdown to HTML. Include key findings, data, and recommendations.
 - If the email fails, continue normally — the user already has the answer in the UI
+{% endif %}
+{% if has_schedule_tools %}
+
+### Step 7: SCHEDULE (only if requested)
+- **Only** if the user asks to schedule, automate, or set up a recurring report (e.g. "send this every week", "schedule a weekly report", "automate this every Monday"), use `preview_schedule`
+- Do NOT call `preview_schedule` unless the user explicitly asked to set up a recurring schedule
+- Ask the user for the day and time if they have not specified both
+- Use recipient_type='team' if the user says "send to the team", otherwise 'me'
+- After calling `preview_schedule`, tell the user a confirmation card has appeared and they should click Confirm to apply the schedule
+- Do NOT call `preview_schedule` more than once per conversation turn
 {% endif %}
 
 ## Important Rules

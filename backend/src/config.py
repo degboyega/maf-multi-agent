@@ -24,6 +24,11 @@ class Config(BaseSettings):
     history_storage_account_url: str = ""  # Blob Storage URL for persistent history (empty = local filesystem)
     allow_anonymous_local_dev: bool = False  # Allow unauthenticated local history access (dev only)
     enable_instrumentation: bool = False  # Enable Azure Monitor / OpenTelemetry instrumentation
+    schedule_api_key: str = ""  # Bearer key for Logic App schedule trigger (empty = disabled)
+    schedule_recipient_email: str = ""  # Email address to receive scheduled reports
+    logic_app_subscription_id: str = ""  # Azure subscription ID for Logic App management
+    logic_app_resource_group: str = ""  # Resource group containing the Logic App
+    logic_app_name: str = ""  # Logic App workflow name to update on schedule confirm
 
     model_config = {"env_file": ".env", "case_sensitive": False}
 

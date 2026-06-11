@@ -2763,6 +2763,54 @@ a:focus-visible {
 .email-confirm-status-cancelled { color: var(--text-muted); }
 .email-confirm-status-error  { color: var(--danger); }
 
+/* Schedule confirm card */
+.schedule-confirm-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+.schedule-confirm-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.schedule-confirm-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.schedule-confirm-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+.schedule-confirm-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--surface-soft);
+  border-radius: 6px;
+  border: 1px solid var(--border-soft);
+}
+.schedule-confirm-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    Chat Home State — Claude-style greeting + pill prompts
    ═══════════════════════════════════════════════════════════════ */

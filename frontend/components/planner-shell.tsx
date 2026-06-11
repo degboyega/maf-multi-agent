@@ -14,6 +14,7 @@ import { ToastContainer, useToast } from "@/components/toast";
 import { WhatsNewModal } from "@/components/whats-new-modal";
 import { UsageDashboard } from "@/components/usage-dashboard";
 import { EmailConfirmCard } from "@/components/email-confirm-card";
+import { ScheduleConfirmCard } from "@/components/schedule-confirm-card";
 import { getAgentIdentity } from "@/lib/agent-metadata";
 import { STARTER_PROMPTS } from "@/lib/starter-prompts";
 import {
@@ -191,6 +192,9 @@ export function PlannerShell() {
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [pendingEmail, setPendingEmail] = useState<{
     token: string; subject: string; to: string; cc: string[]; bodyPreview: string;
+  } | null>(null);
+  const [pendingSchedule, setPendingSchedule] = useState<{
+    token: string; dayOfWeek: string; humanTime: string; recipients: string[];
   } | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectAttemptRef = useRef(0);
@@ -430,6 +434,18 @@ export function PlannerShell() {
           to: typeof d.mail_to === "string" ? d.mail_to : "",
           cc: Array.isArray(d.mail_cc) ? (d.mail_cc as string[]) : [],
           bodyPreview: typeof d.mail_body_preview === "string" ? d.mail_body_preview : "",
+        });
+      }
+    }
+
+    if (event.event_type === "schedule_pending_confirmation") {
+      const d = event.data;
+      if (typeof d.schedule_token === "string") {
+        setPendingSchedule({
+          token: d.schedule_token,
+          dayOfWeek: typeof d.day_of_week === "string" ? d.day_of_week : "",
+          humanTime: typeof d.human_time === "string" ? d.human_time : "",
+          recipients: Array.isArray(d.recipients) ? (d.recipients as string[]) : [],
         });
       }
     }
@@ -1084,6 +1100,18 @@ export function PlannerShell() {
               cc={pendingEmail.cc}
               bodyPreview={pendingEmail.bodyPreview}
               onDismiss={() => setPendingEmail(null)}
+            />
+          </div>
+        )}
+
+        {pendingSchedule && (
+          <div className="email-confirm-dock">
+            <ScheduleConfirmCard
+              token={pendingSchedule.token}
+              dayOfWeek={pendingSchedule.dayOfWeek}
+              humanTime={pendingSchedule.humanTime}
+              recipients={pendingSchedule.recipients}
+              onDismiss={() => setPendingSchedule(null)}
             />
           </div>
         )}

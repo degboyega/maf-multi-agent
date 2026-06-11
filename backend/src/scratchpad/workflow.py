@@ -17,6 +17,7 @@ from src.scratchpad.shared_document import SharedDocument
 from src.scratchpad.facilitator_tools import FacilitatorTools
 from src.scratchpad.dispatcher import create_dispatch_tools
 from src.scratchpad.mail_tools import MailTools
+from src.scratchpad.schedule_tools import ScheduleTools
 from src.summary import SummaryService
 
 logger = logging.getLogger(__name__)
@@ -24,13 +25,14 @@ logger = logging.getLogger(__name__)
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
 
-def _build_facilitator_prompt(dispatch_tools, has_mail_tools: bool = False, user_email: str = "") -> str:
+def _build_facilitator_prompt(dispatch_tools, has_mail_tools: bool = False, has_schedule_tools: bool = False, user_email: str = "") -> str:
     """Render the facilitator system prompt from Jinja2 template."""
     env = Environment(loader=FileSystemLoader(TEMPLATES_DIR), keep_trailing_newline=True)
     template = env.get_template("facilitator_prompt.jinja2")
     return template.render(
         dispatch_tools=dispatch_tools,
         has_mail_tools=has_mail_tools,
+        has_schedule_tools=has_schedule_tools,
         user_email=user_email,
     )
 
@@ -113,6 +115,14 @@ async def run_scratchpad_workflow(
     else:
         logger.info("📧 Mail tools disabled (no user email available)")
 
+    # Add schedule tools if Logic App is configured + user email available
+    has_schedule_tools = False
+    if config.logic_app_name and user_email:
+        schedule_tools = ScheduleTools(user_email=user_email, config=config, event_callback=event_callback)
+        all_tools = all_tools + schedule_tools.get_tools()
+        has_schedule_tools = True
+        logger.info("📅 Schedule tools enabled: logic_app=%s", config.logic_app_name)
+
     if not dispatch_tools:
         raise RuntimeError("No dispatch tools created. Check agents/ directory.")
 
@@ -120,6 +130,7 @@ async def run_scratchpad_workflow(
     facilitator_prompt = _build_facilitator_prompt(
         dispatch_tools,
         has_mail_tools=has_mail_tools,
+        has_schedule_tools=has_schedule_tools,
         user_email=user_email or "",
     )
 

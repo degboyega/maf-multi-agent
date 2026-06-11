@@ -37,6 +37,9 @@ class EventType(str, Enum):
     # Email confirmation gate
     EMAIL_PENDING_CONFIRMATION = "email_pending_confirmation"
 
+    # Schedule confirmation gate
+    SCHEDULE_PENDING_CONFIRMATION = "schedule_pending_confirmation"
+
 
 @dataclass
 class AgentEvent:

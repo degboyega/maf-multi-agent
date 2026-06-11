@@ -34,6 +34,7 @@ from src.events import AgentEvent, EventType
 from src.agent_loader import list_agent_definitions
 from src.graph_mail_client import send_mail
 from src.scratchpad.mail_tools import PENDING_MAIL_STORE
+from src.scratchpad.schedule_tools import PENDING_SCHEDULE_STORE
 from src.fabric_capacity import get_fabric_capacity_status, resume_fabric_capacity
 from src.file_store import (
     copy_run_files,
@@ -316,6 +317,69 @@ def _event_to_sse(event: AgentEvent) -> str:
         "event_summary": event.event_summary,
     }
     return f"data: {json.dumps(payload)}\n\n"
+
+
+_SCHEDULE_QUERY = (
+    "Run the weekly health analysis for COMP-001 (Houston, TX) and COMP-002 (Midland, TX). "
+    "Retrieve the last 7 days of sensor data, check all readings against the Emerson CSER2000 "
+    "advisory and alarm thresholds and Iqbal maintenance guidelines, cross-reference the "
+    "maintenance history for recurring fault patterns, and assess overall risk for each asset. "
+    "Produce a structured weekly health report with: status per asset (Normal / Advisory / Critical), "
+    "specific threshold breaches with measured values, root cause hypothesis, and recommended actions "
+    "with urgency rating. When the report is complete, send it to the engineering team for review."
+)
+
+
+@app.post("/api/schedule/trigger")
+async def schedule_trigger(request: Request):
+    """Logic App webhook — starts a scheduled health analysis run. Authenticated via X-Schedule-Api-Key header."""
+    cfg = get_config()
+    if not cfg.schedule_api_key:
+        raise HTTPException(status_code=503, detail="Scheduled triggers are not configured")
+    provided_key = request.headers.get("X-Schedule-Api-Key", "")
+    if provided_key != cfg.schedule_api_key:
+        raise HTTPException(status_code=401, detail="Invalid schedule API key")
+
+    created_at = datetime.now().isoformat()
+    run_id = datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
+    user_email = cfg.schedule_recipient_email or None
+    user_dir = _safe_user_dir(user_email) if user_email else ""
+
+    store = _store()
+    run_state = store.create(run_id, user_dir=user_dir)
+    queue = run_state.queue
+    snapshot_writer = _RunSnapshotWriter(
+        run_id=run_id,
+        user_dir=user_dir,
+        query=_SCHEDULE_QUERY,
+        created_at=created_at,
+        user_email=user_email,
+    )
+    await snapshot_writer.flush_now()
+
+    loop = asyncio.get_running_loop()
+
+    def _handle_event(event: AgentEvent):
+        if event.event_type != EventType.AGENT_STREAMING:
+            serialized = _serialize_event(event)
+            snapshot_writer.record_event(serialized)
+        queue.put_nowait(event)
+
+    def event_callback(event: AgentEvent):
+        loop.call_soon_threadsafe(_handle_event, event)
+
+    asyncio.create_task(
+        _run_workflow(
+            run_id,
+            _SCHEDULE_QUERY,
+            event_callback,
+            snapshot_writer=snapshot_writer,
+            user_email=user_email,
+        )
+    )
+
+    logger.info("⏰ SCHEDULED RUN %s triggered by Logic App", run_id)
+    return {"run_id": run_id, "status": "triggered"}
 
 
 @app.post("/api/run", response_model=RunResponse)
@@ -654,6 +718,114 @@ async def mail_cancel(token: str):
     """Discard a staged email without sending."""
     PENDING_MAIL_STORE.pop(token, None)
     logger.info("🚫 Mail cancelled: token=%s", token)
+    return {"status": "cancelled"}
+
+
+# ── Schedule Confirm / Cancel ─────────────────────────────────
+
+@app.post("/api/schedule/confirm/{token}")
+async def schedule_confirm(token: str):
+    """Apply a pending Logic App schedule. Called by the UI confirmation card."""
+    pending = PENDING_SCHEDULE_STORE.pop(token, None)
+    if not pending:
+        raise HTTPException(status_code=404, detail="Confirmation token not found or already used.")
+    if pending.is_expired():
+        raise HTTPException(status_code=410, detail="Confirmation token has expired. Ask the agent to preview the schedule again.")
+
+    cfg = get_config()
+    if not cfg.logic_app_name or not cfg.logic_app_resource_group:
+        raise HTTPException(status_code=503, detail="Logic App not configured on this deployment.")
+
+    subscription_id = cfg.logic_app_subscription_id
+    resource_group = cfg.logic_app_resource_group
+    logic_app_name = cfg.logic_app_name
+
+    # Build the updated Logic App workflow definition
+    definition = {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "contentVersion": "1.0.0.0",
+        "parameters": {},
+        "triggers": {
+            "Weekly_Schedule": {
+                "type": "Recurrence",
+                "recurrence": {
+                    "frequency": "Week",
+                    "interval": 1,
+                    "schedule": {
+                        "weekDays": [pending.day_of_week],
+                        "hours": [str(pending.hour)],
+                        "minutes": [pending.minute],
+                    },
+                    "timeZone": "GMT Standard Time",
+                },
+            }
+        },
+        "actions": {
+            "Trigger_MAF_Analysis": {
+                "type": "Http",
+                "inputs": {
+                    "method": "POST",
+                    "uri": f"https://maf-multi-agent.yellowcoast-f2115a5b.eastus.azurecontainerapps.io/api/schedule/trigger",
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "X-Schedule-Api-Key": cfg.schedule_api_key,
+                    },
+                    "body": {},
+                },
+                "runAfter": {},
+            }
+        },
+        "outputs": {},
+    }
+
+    try:
+        import asyncio as _asyncio
+        from azure.identity import DefaultAzureCredential as _Cred
+        import httpx as _httpx
+
+        def _update_logic_app():
+            credential = _Cred()
+            token_obj = credential.get_token("https://management.azure.com/.default")
+            url = (
+                f"https://management.azure.com/subscriptions/{subscription_id}"
+                f"/resourceGroups/{resource_group}/providers/Microsoft.Logic/workflows"
+                f"/{logic_app_name}?api-version=2019-05-01"
+            )
+            body = {
+                "location": "eastus",
+                "properties": {"definition": definition, "state": "Enabled"},
+            }
+            resp = _httpx.put(
+                url,
+                json=body,
+                headers={"Authorization": f"Bearer {token_obj.token}"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+        await _asyncio.to_thread(_update_logic_app)
+    except Exception as exc:
+        logger.error("❌ Logic App update failed: %s", exc)
+        raise HTTPException(status_code=502, detail=f"Failed to update Logic App schedule: {exc}")
+
+    logger.info(
+        "✅ Schedule confirmed: %s at %s every %s → Logic App updated",
+        logic_app_name, pending.time_24h, pending.day_of_week,
+    )
+    return {
+        "status": "scheduled",
+        "day_of_week": pending.day_of_week,
+        "time": pending.human_time,
+        "recipients": pending.recipients,
+    }
+
+
+@app.post("/api/schedule/cancel/{token}")
+async def schedule_cancel(token: str):
+    """Discard a pending schedule without applying it."""
+    PENDING_SCHEDULE_STORE.pop(token, None)
+    logger.info("🚫 Schedule cancelled: token=%s", token)
     return {"status": "cancelled"}
 
 
