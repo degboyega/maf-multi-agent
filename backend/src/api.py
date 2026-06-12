@@ -697,12 +697,22 @@ async def mail_confirm(token: str):
         raise HTTPException(status_code=410, detail="Confirmation token has expired. Please ask the agent to preview the email again.")
 
     cc = pending.team_addresses if pending.team_addresses else None
+    attachments = None
+    if pending.pptx_bytes:
+        from datetime import datetime as _dt
+        filename = f"MAF_Health_Report_{_dt.now().strftime('%Y-%m-%d')}.pptx"
+        attachments = [{
+            "name": filename,
+            "content_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "data": pending.pptx_bytes,
+        }]
     result = await send_mail(
         sender=pending.sender,
         to=pending.user_email,
         subject=pending.subject,
         body_html=pending.body,
         cc=cc,
+        attachments=attachments,
     )
 
     if not result.startswith("Email sent"):

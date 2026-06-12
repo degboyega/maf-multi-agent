@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from src.config import Config
 from src.events import AgentEvent, EventCallback, EventType
+from src.scratchpad.pptx_builder import build_health_report_pptx
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class PendingMail:
     sender: str
     user_email: str
     team_addresses: list[str] = field(default_factory=list)
+    pptx_bytes: Optional[bytes] = None
     created_at: float = field(default_factory=time.time)
 
     def is_expired(self) -> bool:
@@ -80,6 +82,9 @@ class MailTools:
         if recipient_type == "team" and not self._team_addresses:
             return "Error: MAIL_TEAM_ADDRESSES not configured — cannot send to team."
 
+        # Build PPTX attachment from the email body
+        pptx_bytes = build_health_report_pptx(body, subject)
+
         token = secrets.token_urlsafe(16)
         pending = PendingMail(
             token=token,
@@ -89,6 +94,7 @@ class MailTools:
             sender=self._sender,
             user_email=self._user_email,
             team_addresses=self._team_addresses if recipient_type == "team" else [],
+            pptx_bytes=pptx_bytes,
         )
         PENDING_MAIL_STORE[token] = pending
 

@@ -13,6 +13,7 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY backend/src ./src
 COPY backend/agents ./agents
+COPY backend/assets ./assets
 
 # ── Stage 2: Frontend build ───────────────────────────────────
 FROM mcr.microsoft.com/mirror/docker/library/node:20-bookworm-slim@sha256:9e70124bd00f47dd023e349cd587132ae61892acc0e47ed641416c3e18f401c3 AS frontend-build
@@ -47,6 +48,7 @@ WORKDIR /app
 COPY --from=backend-build /app/.venv ./.venv
 COPY backend/src ./src
 COPY backend/agents ./agents
+COPY backend/assets ./assets
 
 # Frontend: Next.js standalone output + static assets + public files
 COPY --from=frontend-build /app/frontend/.next/standalone ./frontend-standalone

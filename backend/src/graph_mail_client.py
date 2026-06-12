@@ -70,28 +70,6 @@ def _get_graph_token() -> str:
         return token_response.token
 
 
-def _smtp_send(
-    sender: str,
-    password: str,
-    to: str,
-    subject: str,
-    body_html: str,
-    cc: list[str] | None,
-) -> None:
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = sender
-    msg["To"] = to
-    if cc:
-        msg["Cc"] = ", ".join(cc)
-    msg.attach(MIMEText(body_html, "html"))
-
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(sender, password)
-        recipients = [to] + (cc or [])
-        server.sendmail(sender, recipients, msg.as_string())
 
 
 async def send_mail(
@@ -100,16 +78,24 @@ async def send_mail(
     subject: str,
     body_html: str,
     cc: list[str] | None = None,
+    attachments: list[dict] | None = None,
 ) -> str:
+    """Send an email via SMTP or Graph API.
+
+    attachments: list of {"name": str, "content_type": str, "data": bytes}
+    """
+    import base64
+
     all_recipients = [to] + (cc or [])
     recipients_str = ", ".join(all_recipients)
     cc_str = f", cc={cc}" if cc else ""
+    attach_str = f", {len(attachments)} attachment(s)" if attachments else ""
 
     password = os.environ.get("MAIL_SENDER_PASSWORD", "")
     if password:
-        logger.info("📧 Sending email (SMTP): from=%s to=%s%s subject='%s'", sender, to, cc_str, subject[:80])
+        logger.info("📧 Sending email (SMTP): from=%s to=%s%s subject='%s'%s", sender, to, cc_str, subject[:80], attach_str)
         try:
-            await asyncio.to_thread(_smtp_send, sender, password, to, subject, body_html, cc)
+            await asyncio.to_thread(_smtp_send_with_attachments, sender, password, to, subject, body_html, cc, attachments)
             logger.info("✅ Email sent (SMTP) to %s", recipients_str)
             return f"Email sent successfully to {recipients_str}"
         except smtplib.SMTPAuthenticationError:
@@ -123,7 +109,7 @@ async def send_mail(
             return f"Failed to send email: {exc}"
 
     # Fall back to Graph API via managed identity
-    logger.info("📧 Sending email (Graph): from=%s to=%s%s subject='%s'", sender, to, cc_str, subject[:80])
+    logger.info("📧 Sending email (Graph): from=%s to=%s%s subject='%s'%s", sender, to, cc_str, subject[:80], attach_str)
     try:
         token = await asyncio.to_thread(_get_graph_token)
     except Exception as exc:
@@ -143,15 +129,68 @@ async def send_mail(
     if cc:
         message["ccRecipients"] = [{"emailAddress": {"address": a}} for a in cc]
 
+    if attachments:
+        message["attachments"] = [
+            {
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                "name": att["name"],
+                "contentType": att["content_type"],
+                "contentBytes": base64.b64encode(att["data"]).decode("ascii"),
+            }
+            for att in attachments
+            if att.get("data")
+        ]
+
     payload = {"message": message, "saveToSentItems": "true"}
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(url, headers=headers, json=payload)
 
     if resp.status_code == 202:
-        logger.info("✅ Email sent (Graph) to %s", recipients_str)
+        logger.info("✅ Email sent (Graph) to %s%s", recipients_str, attach_str)
         return f"Email sent successfully to {recipients_str}"
     else:
         error_text = resp.text[:500]
         logger.error("❌ Graph sendMail failed: %d %s", resp.status_code, error_text)
         return f"Failed to send email (HTTP {resp.status_code}): {error_text}"
+
+
+def _smtp_send_with_attachments(
+    sender: str,
+    password: str,
+    to: str,
+    subject: str,
+    body_html: str,
+    cc: list[str] | None,
+    attachments: list[dict] | None,
+) -> None:
+    from email.mime.base import MIMEBase
+    from email import encoders
+
+    msg = MIMEMultipart("mixed")
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = to
+    if cc:
+        msg["Cc"] = ", ".join(cc)
+
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(body_html, "html"))
+    msg.attach(alt)
+
+    for att in (attachments or []):
+        if not att.get("data"):
+            continue
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(att["data"])
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f'attachment; filename="{att["name"]}"')
+        part.add_header("Content-Type", att.get("content_type", "application/octet-stream"))
+        msg.attach(part)
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.ehlo()
+        server.starttls()
+        server.login(sender, password)
+        recipients = [to] + (cc or [])
+        server.sendmail(sender, recipients, msg.as_string())
