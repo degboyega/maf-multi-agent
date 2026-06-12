@@ -369,17 +369,75 @@ async def schedule_trigger(request: Request):
         loop.call_soon_threadsafe(_handle_event, event)
 
     asyncio.create_task(
-        _run_workflow(
-            run_id,
-            _SCHEDULE_QUERY,
-            event_callback,
-            snapshot_writer=snapshot_writer,
-            user_email=user_email,
-        )
+        _run_scheduled_analysis(run_id, event_callback, snapshot_writer, user_email)
     )
 
     logger.info("⏰ SCHEDULED RUN %s triggered by Logic App", run_id)
     return {"run_id": run_id, "status": "triggered"}
+
+
+async def _run_scheduled_analysis(run_id, event_callback, snapshot_writer, user_email):
+    """Run the weekly health analysis and auto-send the report — no confirmation gate."""
+    from src.scratchpad.workflow import run_scratchpad_workflow
+    from src.scratchpad.pptx_builder import build_health_report_pptx
+
+    cfg = get_config()
+    try:
+        result_text, document_md = await run_scratchpad_workflow(
+            query=_SCHEDULE_QUERY,
+            event_callback=event_callback,
+            user_email=user_email,
+        )
+        snapshot_writer.set_terminal_state(status="done", result_text=result_text, document_md=document_md)
+        await snapshot_writer.flush_now()
+    except Exception as exc:
+        logger.error("❌ Scheduled workflow failed: %s", exc)
+        return
+
+    if not (cfg.mail_enabled and user_email and result_text):
+        logger.info("⏰ Scheduled run %s complete — mail disabled or no result", run_id)
+        return
+
+    # Convert result markdown to HTML
+    lines = result_text.strip().split("\n")
+    html_lines = []
+    for line in lines:
+        if line.startswith("## "):
+            html_lines.append(f"<h2>{line[3:]}</h2>")
+        elif line.startswith("### "):
+            html_lines.append(f"<h3>{line[4:]}</h3>")
+        elif line.startswith("**") and line.endswith("**"):
+            html_lines.append(f"<p><strong>{line[2:-2]}</strong></p>")
+        elif line.startswith("- ") or line.startswith("* "):
+            html_lines.append(f"<li>{line[2:]}</li>")
+        elif line.strip():
+            html_lines.append(f"<p>{line}</p>")
+    body_html = "<html><body style='font-family:Calibri,sans-serif'>" + "".join(html_lines) + "</body></html>"
+
+    # Generate PPTX
+    pptx_bytes = build_health_report_pptx(body_html, "Weekly MAF Health Report")
+
+    attachments = None
+    if pptx_bytes:
+        filename = f"MAF_Health_Report_{datetime.now().strftime('%Y-%m-%d')}.pptx"
+        attachments = [{
+            "name": filename,
+            "content_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "data": pptx_bytes,
+        }]
+
+    cc_addresses = [a.strip() for a in cfg.mail_team_addresses.split(",") if a.strip()] or None
+    subject = f"MAF Weekly Compressor Health Report — {datetime.now().strftime('%d %b %Y')}"
+
+    result = await send_mail(
+        sender=cfg.mail_sender_address,
+        to=user_email,
+        subject=subject,
+        body_html=body_html,
+        cc=cc_addresses,
+        attachments=attachments,
+    )
+    logger.info("📧 Scheduled report emailed: %s", result)
 
 
 @app.post("/api/run", response_model=RunResponse)
