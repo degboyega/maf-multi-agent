@@ -53,7 +53,7 @@ export default function LandingPage() {
               <span className="landing-asset-id">COMP-001</span>
               <span className="landing-status-pill landing-status-advisory">Advisory</span>
             </div>
-            <div className="landing-asset-location">Houston, TX</div>
+            <div className="landing-asset-location">Warri, Delta State</div>
             <div className="landing-asset-metrics">
               <div className="landing-metric">
                 <span className="landing-metric-label">Discharge Temp</span>
@@ -71,7 +71,7 @@ export default function LandingPage() {
               <span className="landing-asset-id">COMP-002</span>
               <span className="landing-status-pill landing-status-normal">Normal</span>
             </div>
-            <div className="landing-asset-location">Midland, TX</div>
+            <div className="landing-asset-location">Eket, Akwa Ibom</div>
             <div className="landing-asset-metrics">
               <div className="landing-metric">
                 <span className="landing-metric-label">Discharge Temp</span>
