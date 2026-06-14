@@ -320,7 +320,7 @@ def _event_to_sse(event: AgentEvent) -> str:
 
 
 _SCHEDULE_QUERY = (
-    "Run the weekly health analysis for COMP-001 (Houston, TX) and COMP-002 (Midland, TX). "
+    "Run the weekly health analysis for COMP-001 (Warri, Delta State) and COMP-002 (Eket, Akwa Ibom). "
     "Retrieve the last 7 days of sensor data, check all readings against the Emerson CSER2000 "
     "advisory and alarm thresholds and Iqbal maintenance guidelines, cross-reference the "
     "maintenance history for recurring fault patterns, and assess overall risk for each asset. "

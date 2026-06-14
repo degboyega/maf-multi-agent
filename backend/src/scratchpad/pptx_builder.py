@@ -191,7 +191,7 @@ def _extract_asset_blocks(plain_text: str) -> list[dict]:
 
         status = _detect_status(block[:200])
         location = ""
-        loc_match = re.search(r"(Houston|Midland|Dallas|Calgary|Lagos|[A-Z][a-z]+,\s*[A-Z]{2})", block)
+        loc_match = re.search(r"(Warri|Eket|Port Harcourt|Lagos|Bonny|Brass|Niger Delta|Akwa Ibom|Delta State|[A-Z][a-z]+,\s*[A-Z][a-z]+)", block)
         if loc_match:
             location = loc_match.group(1)
 
