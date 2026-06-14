@@ -175,7 +175,7 @@ async def _call_mcp_async(
             "id": 1,
             "method": "initialize",
             "params": {
-                "protocolVersion": "2025-03-26",
+                "protocolVersion": "2025-06-18",
                 "capabilities": {},
                 "clientInfo": {"name": "maf-multi-agent", "version": "0.1.0"},
             },
@@ -333,8 +333,12 @@ def run_fabric_mcp(
     # Resolve environment variables
     mcp_url = _resolve_env(mcp_url_env)
 
-    # Acquire token: prefer user_token from Easy Auth, fall back to credential-based
-    if user_token:
+    # Acquire token.
+    # user_token (Easy Auth X-MS-TOKEN-AAD-ACCESS-TOKEN) has aud = the app registration,
+    # NOT https://api.fabric.microsoft.com — so it cannot be used for Fabric calls.
+    # Only use it when auth_mode is explicitly "user_token"; always use managed identity
+    # (default_credential) or service principal for Fabric API access.
+    if user_token and auth_mode == "user_token":
         token = user_token
         logger.info("🔑 Using pre-acquired user token (Easy Auth / body)")
         # Log token claims for diagnostics (decode JWT payload without verification)
