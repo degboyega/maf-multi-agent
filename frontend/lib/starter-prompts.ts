@@ -7,18 +7,18 @@ export interface StarterPrompt {
 
 export const STARTER_PROMPTS: StarterPrompt[] = [
   {
-    title: "Full compressor health check",
-    pill: "Analyse both compressors",
+    title: "Full diagnostic — all 4 agents",
+    pill: "Full diagnostic report",
     icon: "Activity",
     query:
-      "Carry out a full health analysis on both COMP-001 (Houston, TX) and COMP-002 (Midland, TX). For each asset retrieve the last 7 days of sensor readings, identify any parameters that breach or approach the advisory thresholds defined in the Emerson CSER2000 maintenance manual and the Iqbal guidelines, cross-reference against the maintenance history to identify recurring issues, and assess overall risk. Summarise your findings in a structured report with a status for each asset (Normal / Advisory / Critical), specific readings that triggered concern, root cause hypothesis, and recommended action with urgency rating.",
+      "Give me a full diagnostic report on COMP-001 and COMP-002 for the last 7 days. I need: (1) the latest sensor readings with any threshold breaches flagged against the Emerson CSER2000 manual, (2) a line chart showing discharge temperature and vibration trends over the week, (3) what the Iqbal maintenance guidelines say about the fault pattern we're seeing, and (4) any recent industry advisories or weather conditions in the Niger Delta that could be contributing to the anomaly. Summarise with a risk rating and recommended next action.",
   },
   {
     title: "COMP-001 status",
     pill: "COMP-001 health status",
     icon: "Gauge",
     query:
-      "Assess the current health of COMP-001 in Houston, TX. Pull the latest sensor readings, check them against the Emerson CSER2000 advisory and alarm thresholds, review any open maintenance actions, and give me a clear status: Normal, Advisory, or Critical — with the specific readings that triggered the assessment.",
+      "Assess the current health of COMP-001 in Warri, Delta State. Pull the latest sensor readings, check them against the Emerson CSER2000 advisory and alarm thresholds, review any open maintenance actions, and give me a clear status: Normal, Advisory, or Critical — with the specific readings that triggered the assessment.",
   },
   {
     title: "Last 7 days faults",
@@ -32,7 +32,7 @@ export const STARTER_PROMPTS: StarterPrompt[] = [
     pill: "Send health report to team",
     icon: "Mail",
     query:
-      "Run a full health analysis on COMP-001 and COMP-002, then prepare a structured maintenance report and send it to the engineering team for review.",
+      "Run a full health analysis on COMP-001 (Warri, Delta State) and COMP-002 (Eket, Akwa Ibom), then prepare a structured maintenance report and send it to the engineering team for review.",
   },
   {
     title: "Schedule weekly report",
