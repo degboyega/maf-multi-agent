@@ -22,6 +22,12 @@ Call specialist agents to work on their assigned tasks:
 {% endfor %}
 - Pass the task_ids as a JSON array and a clear message describing what you need
 - You can call multiple specialists — they work independently
+- **EXCEPTION — Charts & Visualisations:** CoderData cannot access databases directly.
+  When the user asks for charts or plots of sensor/asset data, you MUST sequence tasks:
+  1. Dispatch `data_analyst_tool` first to retrieve the raw data values
+  2. Wait for the result, then dispatch `coderdata_tool` with the actual data values
+     **embedded directly in the task message** (paste the data as a CSV table or list of values).
+  Never ask CoderData to "fetch" or "query" data — give it the numbers directly.
 
 ### Step 3: CHECK
 After dispatching, call `get_plan_status` to verify all tasks are completed.
